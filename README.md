@@ -13,3 +13,9 @@ make
 ```
 
 And change main.cpp to any file you want to run it against.
+
+Note the following assumptions:
+
+* You never have a line longer than 512 characters (it will get cut off)
+* Tabs are 4 spaces wide
+* You don't mind loading the whole file in to memory

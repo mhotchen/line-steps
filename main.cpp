@@ -4,15 +4,16 @@
 #include <vector>
 #include <iomanip>
 
-bool isIndent(char* line, int currentLevel);
-bool isUnindent(char* line, int currentLevel);
 bool isAllWhitespace(char* string);
 int  getIndentAmount(char* line);
+
+const int TAB_WIDTH = 4; // assume 4 spaces per tab
 
 struct Line {
     std::string number;
     std::string line;
 };
+
 
 int main(int argc, char* args[]) {
     if (argc != 2) {
@@ -21,15 +22,30 @@ int main(int argc, char* args[]) {
     }
 
     std::vector<Line> lines;
-    lines.resize(500, Line());
+    lines.resize(512, Line());
 
-    std::vector<int> numbers;
-    numbers.resize(50, 0);
+    /*
+     * Given the following example code:
+     * int main() {
+     *     foo();
+     * }
+     *
+     * Then the following loop through each line will affect the indentedLineCount data structure like so:
+     *
+     * int main() {    [+1, 0, 0, 0,  0]  No indentation so +1 to indentLineCount[0]
+     *     foo();      [ 1, 0, 0, 0, +1]  4 space characters, so +1 to indentLineCount[4]
+     * }               [+1, 0, 0, 0, -1]  No indentation so +1 to indentLineCode[0] and set all subsequent values to 0
+     *
+     * result:         [ 2, 0, 0, 0,  0]
+     */
 
-    int currentIndent = 0;
-    int longestDepthString = 0;
-    int lineNumber = 0;
-    int depth = 0;
+    std::vector<int> indentedLineCount;
+    indentedLineCount.resize(16, 0);
+
+    int  currentIndent      = 0;
+    int  longestDepthString = 0;
+    int  lineNumber         = 0;
+    char line[512];              // I pray this is enough for everyone...
 
     std::ifstream file(args[1]);
     if (!file.good()) {
@@ -38,45 +54,53 @@ int main(int argc, char* args[]) {
     }
 
     while (file.good()) {
-        char line[512]; // I pray this is enough for everyone...
         file.getline(line, 512);
 
-        if (isIndent(line, currentIndent)) {
-            depth++;
+        // Calculate indent and increment the correct position in indentedLineCount
+
+        if (!isAllWhitespace(line)) {
             currentIndent = getIndentAmount(line);
-        } else if (isUnindent(line, currentIndent)) {
-            numbers[depth] = 0;
-            depth--;
-            currentIndent = getIndentAmount(line);
+
+            for (int i = currentIndent + 1; i < indentedLineCount.size(); ++i) {
+                indentedLineCount[i] = 0;
+            }
         }
 
-        if (numbers.size() < depth) {
-            numbers.resize(depth + 5, 0);
+        if (indentedLineCount.size() <= currentIndent) {
+            indentedLineCount.resize(currentIndent + 8, 0);
         }
 
-        numbers[depth]++;
+        indentedLineCount[currentIndent]++;
+
+        // Generate the string for placing in the gutter
+
         std::string depthString;
-        for (int i = 0; i < numbers.size(); ++i) {
-            if (numbers[i] == 0) {
-                break;
+        for (int i = 0; i < indentedLineCount.size(); ++i) {
+            if (indentedLineCount[i] == 0) {
+                continue;
             }
 
-            depthString = depthString + "." + std::to_string(numbers[i]);
+            depthString = depthString + "." + std::to_string(indentedLineCount[i]);
         }
 
         depthString = depthString.substr(1);
-        if (depthString.length() > longestDepthString) {
-            longestDepthString = depthString.length();
-        }
-
-        if (lineNumber > lines.size()) {
-            lines.resize(lineNumber + 500, Line());
-        }
 
         lines[lineNumber].line = line;
         lines[lineNumber].number = depthString;
 
         ++lineNumber;
+
+        // Calculate gutter size
+
+        if (depthString.length() > longestDepthString) {
+            longestDepthString = depthString.length();
+        }
+
+        // Resize the lines vector if necessary
+
+        if (lineNumber >= lines.size()) {
+            lines.resize(lineNumber + 512, Line());
+        }
     }
 
     for (int i = 0; i < lines.size(); ++i) {
@@ -91,52 +115,27 @@ int main(int argc, char* args[]) {
     return 0;
 }
 
-bool isIndent(char* line, int currentLevel = 0) {
-    if (line[0] == '\0') {
-        return false;
-    }
-
-    if (strlen(line) <= currentLevel) {
-        return false;
-    }
-
-    if (isAllWhitespace(line)) {
-        std::cout << "50" << std::endl;
-        return false;
-    }
-
-    return getIndentAmount(line) > currentLevel;
-}
-
-bool isUnindent(char* line, int currentLevel = 0) {
-    if (line[0] == '\0') {
-        return false;
-    }
-
-    if (currentLevel == 0) {
-        return false;
-    }
-
-    if (isAllWhitespace(line)) {
-        return false;
-    }
-
-    return getIndentAmount(line) < currentLevel;
-}
 
 int getIndentAmount(char* string) {
-    int i = 0;
-    for (; i < strlen(string); ++i) {
-        if (string[i] != ' ' && string[i] != '\t') {
+    int indentAmount = 0;
+    int stringLength = strlen(string);
+    for (int i = 0; i < stringLength; ++i) {
+        if (string[i] == ' ') {
+            ++indentAmount;
+        } else if (string[i] == '\t') {
+            indentAmount += TAB_WIDTH;
+        } else {
             break;
         }
     }
 
-    return i;
+    return indentAmount;
 }
 
+
 bool isAllWhitespace(char* string) {
-    for (int i = 0; i < strlen(string); ++i) {
+    int stringLength = strlen(string);
+    for (int i = 0; i < stringLength; ++i) {
         if (string[i] != ' ' && string[i] != '\t') {
             return false;
         }

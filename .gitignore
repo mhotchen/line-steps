@@ -7,6 +7,9 @@ cmake_install.cmake
 install_manifest.txt
 CTestTestfile.cmake
 
+# Compiled application
+line_steps
+
 # Compiled Object files
 *.slo
 *.lo
