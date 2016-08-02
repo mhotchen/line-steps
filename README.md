@@ -9,7 +9,7 @@ To use, clone the repo, `cd` in to the directory and run:
 ```
 cmake .
 make
-./line_steps main.cpp
+./line_steps main.c
 ```
 
 And change main.cpp to any file you want to run it against.
