@@ -4,7 +4,8 @@
 
 bool isAllWhitespace(char* string);
 int  getIndentAmount(char* line);
-void updatePosition(int* depth, int* indentedLineCount, int* indentedLineCountSize, char* line);
+int  getLineNumberSize(int* indentedLineCount, int indentedLineCountSize);
+void updatePosition(int depth, int* indentedLineCount, int indentedLineCountSize, char* line);
 
 const int TAB_WIDTH = 4; // assume 4 spaces per tab
 
@@ -31,31 +32,11 @@ int main(int argc, char* args[]) {
     // look for the longest line so we can set the gutter width
 
     while (fgets(line, 512, fh)) {
-        updatePosition(&depth, indentedLineCount, &indentedLineCountSize, line);
+        updatePosition(depth, indentedLineCount, indentedLineCountSize, line);
+        int lineNumberSize = getLineNumberSize(indentedLineCount, indentedLineCountSize);
 
-        int increases[4] = {9, 99, 999, 9999};
-        int currentSize = 0;
-        for (int i = 0; i < indentedLineCountSize; ++i) {
-            if (indentedLineCount[i] == 0) {
-                continue;
-            }
-
-            currentSize += 2; // 1 for the dot, 1 for the number
-
-            // if number is 10 then it needs another byte of space, same for 100, etc.
-            for (int j = 0; j < sizeof(increases) / sizeof(int); ++j) {
-                if (indentedLineCount[i] > increases[j]) {
-                    ++currentSize;
-                } else {
-                    break;
-                }
-            }
-        }
-
-        --currentSize; // for stripping the first dot
-
-        if (currentSize > gutterSize) {
-            gutterSize = currentSize;
+        if (lineNumberSize > gutterSize) {
+            gutterSize = lineNumberSize;
         }
     }
 
@@ -70,7 +51,7 @@ int main(int argc, char* args[]) {
 
     char lineNumber[gutterSize];
     while (fgets(line, 512, fh)) {
-        updatePosition(&depth, indentedLineCount, &indentedLineCountSize, line);
+        updatePosition(depth, indentedLineCount, indentedLineCountSize, line);
 
         sprintf(lineNumber, "%s", "");
         for (int i = 0; i < indentedLineCountSize; ++i) {
@@ -103,6 +84,30 @@ int getIndentAmount(char* string) {
 }
 
 
+int getLineNumberSize(int* indentedLineCount, int indentedLineCountSize) {
+    int increases[4] = {9, 99, 999, 9999};
+    int currentSize = 0;
+    for (int i = 0; i < indentedLineCountSize; ++i) {
+        if (indentedLineCount[i] == 0) {
+            continue;
+        }
+
+        currentSize += 2; // 1 for the dot, 1 for the number
+
+        // if number is 10 then it needs another byte of space, same for 100, etc.
+        for (int j = 0; j < sizeof(increases) / sizeof(int); ++j) {
+            if (indentedLineCount[i] > increases[j]) {
+                ++currentSize;
+            } else {
+                break;
+            }
+        }
+    }
+
+    return --currentSize; // for stripping the first dot
+}
+
+
 bool isAllWhitespace(char* string) {
     size_t stringLength = strlen(string) - 1;
     for (int i = 0; i < stringLength; ++i) {
@@ -113,6 +118,7 @@ bool isAllWhitespace(char* string) {
 
     return true;
 }
+
 
 /**
  * Given the following example code:
@@ -128,20 +134,20 @@ bool isAllWhitespace(char* string) {
  *
  * result:         [ 2, 0, 0, 0,  0]
  */
-void updatePosition(int* depth, int* indentedLineCount, int* indentedLineCountSize, char* line) {
+void updatePosition(int depth, int* indentedLineCount, int indentedLineCountSize, char* line) {
     if (!isAllWhitespace(line)) {
-        *depth = getIndentAmount(line);
-        for (int i = *depth + 1; i < *indentedLineCountSize; i++) {
+        depth = getIndentAmount(line);
+        for (int i = depth + 1; i < indentedLineCountSize; i++) {
             indentedLineCount[i] = 0;
         }
     }
 
     // resize the array if necessary
 
-    if (*depth >= *indentedLineCountSize) {
+    if (depth >= indentedLineCountSize) {
         indentedLineCountSize += 8;
-        indentedLineCount = realloc(indentedLineCount, *indentedLineCountSize * sizeof(int));
+        indentedLineCount = realloc(indentedLineCount, indentedLineCountSize * sizeof(int));
     }
 
-    ++indentedLineCount[*depth];
+    ++indentedLineCount[depth];
 }
