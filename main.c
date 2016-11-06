@@ -1,124 +1,128 @@
+#include <errno.h>
 #include <malloc.h>
+#include <memory.h>
 #include <stdbool.h>
-#include <string.h>
+#include <stdlib.h>
 
-bool isAllWhitespace(char* string);
-int  getIndentAmount(char* line);
-int  getLineNumberSize(int* indentedLineCount, int indentedLineCountSize);
-void updatePosition(int depth, int* indentedLineCount, int indentedLineCountSize, char* line);
+#define TAB_WIDTH 4
+#define MAX_LINE_SIZE 512 /* I pray 512 characters is enough for everyone... */
 
-const int TAB_WIDTH = 4; // assume 4 spaces per tab
+bool isAllWhitespace(char line[MAX_LINE_SIZE]);
+int  getIndentAmount(char line[MAX_LINE_SIZE]);
+int  getLineNumberSize(int indentedLineCountSize, int indentedLineCount[indentedLineCountSize]);
+void updatePosition(int *depth, int *indentedLineCountSize, int *indentedLineCount, char line[MAX_LINE_SIZE]);
+void buildLineNumberString(char string[], int indentedLineCountSize, int indentedLineCount[indentedLineCountSize]);
 
-int main(int argc, char* args[]) {
+int
+main(int argc, char *args[argc])
+{
     if (argc != 2) {
         fprintf(stderr, "Invalid use. Usage: %s [FILENAME]\n", args[0]);
-        return 1;
+        exit(EXIT_FAILURE);
     }
 
     FILE* fh = fopen(args[1], "r");
     if (fh == NULL) {
-        fprintf(stderr, "Unable to open file %s for reading\n", args[1]);
-        return 1;
+        fprintf(stderr, "%s: Unable to open file %s for reading (%s)\n", args[0], args[1], strerror(errno));
+        exit(EXIT_FAILURE);
     }
 
-    char line[512];                    // I pray 512 characters is enough for everyone...
+    char line[MAX_LINE_SIZE]   = {0};
     int  gutterSize            = 0;
-    int* indentedLineCount     = NULL;
     int  indentedLineCountSize = 24;
+    int  *indentedLineCount    = malloc(indentedLineCountSize * sizeof(int));
     int  depth                 = 0;
 
-    indentedLineCount = realloc(indentedLineCount, indentedLineCountSize * sizeof(int));
+    /* Find the longest line so we can set the gutter width */
 
-    // look for the longest line so we can set the gutter width
-
-    while (fgets(line, 512, fh)) {
-        updatePosition(depth, indentedLineCount, indentedLineCountSize, line);
-        int lineNumberSize = getLineNumberSize(indentedLineCount, indentedLineCountSize);
-
-        if (lineNumberSize > gutterSize) {
-            gutterSize = lineNumberSize;
-        }
+    int max(const int a, const int b) {return a > b ? a : b;}
+    while (fgets(line, MAX_LINE_SIZE, fh)) {
+        updatePosition(&depth, &indentedLineCountSize, indentedLineCount, line);
+        gutterSize = max(getLineNumberSize(indentedLineCountSize, indentedLineCount), gutterSize);
     }
 
-    // reset
+    if (gutterSize > 100) {
+        fprintf(stderr, "%s: Indentation is too deep\n", args[0]);
+        exit(EXIT_FAILURE);
+    }
 
+    /* Reset */
+
+    depth = 0;
     fseek(fh, 0, SEEK_SET);
     for (int i = 0; i < indentedLineCountSize; ++i) {
         indentedLineCount[i] = 0;
     }
 
-    // print each line with its line number
+    /* Print each line with its line number */
 
     char lineNumber[gutterSize];
-    while (fgets(line, 512, fh)) {
-        updatePosition(depth, indentedLineCount, indentedLineCountSize, line);
+    while (fgets(line, MAX_LINE_SIZE, fh)) {
+        updatePosition(&depth, &indentedLineCountSize, indentedLineCount, line);
 
-        sprintf(lineNumber, "%s", "");
-        for (int i = 0; i < indentedLineCountSize; ++i) {
-            if (indentedLineCount[i] != 0) {
-                sprintf(lineNumber, "%s.%d", lineNumber, indentedLineCount[i]);
-            }
-        }
-
-        fprintf(stdout, "%-*s | %s", gutterSize, lineNumber + 1, line);
+        buildLineNumberString(lineNumber, indentedLineCountSize, indentedLineCount);
+        fprintf(stdout, "%-*s | %s", gutterSize, lineNumber, line);
     }
 
-    return 0;
+    fprintf(stdout, "\n");
+
+    exit(EXIT_SUCCESS);
 }
 
-
-int getIndentAmount(char* string) {
+int
+getIndentAmount(char line[MAX_LINE_SIZE])
+{
     int indentAmount = 0;
-    size_t stringLength = strlen(string) - 1;
-    for (int i = 0; i < stringLength; ++i) {
-        if (string[i] == ' ') {
-            ++indentAmount;
-        } else if (string[i] == '\t') {
-            indentAmount += TAB_WIDTH;
-        } else {
-            break;
+
+    for (int i = 0; i < MAX_LINE_SIZE; ++i) {
+        switch (line[i]) {
+            case ' ':  ++indentAmount;            break;
+            case '\t': indentAmount += TAB_WIDTH; break;
+            default:   return indentAmount;
         }
     }
 
     return indentAmount;
 }
 
+int
+getLineNumberSize(int indentedLineCountSize, int indentedLineCount[indentedLineCountSize])
+{
+    int  currentSize = 0;
+    char *asString[MAX_LINE_SIZE];
 
-int getLineNumberSize(int* indentedLineCount, int indentedLineCountSize) {
-    int increases[4] = {9, 99, 999, 9999};
-    int currentSize = 0;
     for (int i = 0; i < indentedLineCountSize; ++i) {
         if (indentedLineCount[i] == 0) {
             continue;
         }
 
-        currentSize += 2; // 1 for the dot, 1 for the number
-
-        // if number is 10 then it needs another byte of space, same for 100, etc.
-        for (int j = 0; j < sizeof(increases) / sizeof(int); ++j) {
-            if (indentedLineCount[i] > increases[j]) {
-                ++currentSize;
-            } else {
-                break;
-            }
-        }
+        /* The length of the number as a string + an extra character for the dot */
+        snprintf((char *)asString, MAX_LINE_SIZE, "%d", indentedLineCount[i]);
+        currentSize += strlen((char *)asString) + 1;
     }
 
-    return --currentSize; // for stripping the first dot
+    /* Decrement by one to strip the preceding dot */
+    return --currentSize;
 }
 
+bool
+isAllWhitespace(char line[MAX_LINE_SIZE])
+{
+    for (int i = 0; i < MAX_LINE_SIZE; ++i) {
+        switch (line[i]) {
+            case ' ':
+            case '\t': continue;
 
-bool isAllWhitespace(char* string) {
-    size_t stringLength = strlen(string) - 1;
-    for (int i = 0; i < stringLength; ++i) {
-        if (string[i] != ' ' && string[i] != '\t') {
-            return false;
+            case '\0':
+            case '\n':
+            case '\r': return true;
+
+            default:   return false;
         }
     }
 
     return true;
 }
-
 
 /**
  * Given the following example code:
@@ -134,20 +138,37 @@ bool isAllWhitespace(char* string) {
  *
  * result:         [ 2, 0, 0, 0,  0]
  */
-void updatePosition(int depth, int* indentedLineCount, int indentedLineCountSize, char* line) {
+void
+updatePosition(int *depth, int *indentedLineCountSize, int *indentedLineCount, char line[MAX_LINE_SIZE])
+{
     if (!isAllWhitespace(line)) {
-        depth = getIndentAmount(line);
-        for (int i = depth + 1; i < indentedLineCountSize; i++) {
-            indentedLineCount[i] = 0;
+        *depth = getIndentAmount(line);
+    }
+
+    /* Resize the array if necessary */
+
+    if ((*depth) > (*indentedLineCountSize)) {
+        (*indentedLineCountSize) += ((*depth) + 8);
+        indentedLineCount = realloc(indentedLineCount, (*indentedLineCountSize) * sizeof(int));
+    }
+
+    ++indentedLineCount[*depth];
+
+    /* Clear values that are deeper than the current depth */
+
+    for (int i = *depth + 1; i < *indentedLineCountSize; i++) {
+        indentedLineCount[i] = 0;
+    }
+}
+
+void
+buildLineNumberString(char *string, int indentedLineCountSize, int indentedLineCount[indentedLineCountSize])
+{
+    string[0] = 0;
+    for (int i = 0; i < indentedLineCountSize; ++i) {
+        if (indentedLineCount[i] != 0) {
+            sprintf(string, "%s.%d", string, indentedLineCount[i]);
         }
     }
-
-    // resize the array if necessary
-
-    if (depth >= indentedLineCountSize) {
-        indentedLineCountSize += 8;
-        indentedLineCount = realloc(indentedLineCount, indentedLineCountSize * sizeof(int));
-    }
-
-    ++indentedLineCount[depth];
+    sprintf(string, "%s", string + 1); /* + 1 to skip the leading . character */
 }
